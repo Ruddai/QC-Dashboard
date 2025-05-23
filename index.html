@@ -1,14 +1,158 @@
-
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Dashboard Monitoring</title>
+  <title>Dashboard Data Sheet</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: sans-serif; margin: 20px; }
+    .filters input { margin: 5px; padding: 5px; width: 200px; }
+    canvas { max-width: 100%; margin: 20px 0; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+  </style>
 </head>
 <body>
-  <h1>Dashboard Monitoring</h1>
-  <p>Filter dan grafik akan ditambahkan di sini.</p>
+  <h1>📊 Dashboard Google Sheets</h1>
+
+  <div class="filters">
+    <input type="text" id="searchPIC" placeholder="Cari PIC">
+    <input type="text" id="searchIMEI" placeholder="Cari IMEI">
+    <input type="text" id="searchStatus" placeholder="Cari Status">
+    <input type="text" id="searchKoneksi" placeholder="Cari Koneksi">
+  </div>
+
+  <canvas id="perBulanChart"></canvas>
+  <canvas id="statusPieChart"></canvas>
+  <canvas id="picBarChart"></canvas>
+
+  <table id="dataTable">
+    <thead></thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    const apiUrl = "https://script.google.com/macros/s/AKfycbzjzHVorgdz3pCfLO8xHSJ_Xx_MTh2m5xYpm-lWraV8HKB3BNDJ00GtimXHViTsB_gAbA/exec";
+
+    let data = [], filtered = [];
+
+    async function fetchData() {
+      try {
+        const res = await fetch(apiUrl);
+        data = await res.json();
+        render();
+      } catch (e) {
+        alert("Gagal mengambil data dari Google Sheets. Cek koneksi dan URL Web App.");
+      }
+    }
+
+    function formatDate(d) {
+      const dt = new Date(d);
+      if (isNaN(dt)) return d;
+      return dt.toLocaleDateString("id-ID");
+    }
+
+    function render() {
+      const pic = document.getElementById("searchPIC").value.toLowerCase();
+      const imei = document.getElementById("searchIMEI").value.toLowerCase();
+      const status = document.getElementById("searchStatus").value.toLowerCase();
+      const koneksi = document.getElementById("searchKoneksi").value.toLowerCase();
+
+      filtered = data.filter(row => {
+        return (!pic || (row.PIC || '').toString().toLowerCase().includes(pic)) &&
+               (!imei || (row.IMEI || '').toString().toLowerCase().includes(imei)) &&
+               (!status || (row.Status || '').toString().toLowerCase().includes(status)) &&
+               (!koneksi || (row.Koneksi || '').toString().toLowerCase().includes(koneksi));
+      });
+
+      renderTable();
+      renderCharts();
+    }
+
+    function renderTable() {
+      const table = document.getElementById("dataTable");
+      const thead = table.querySelector("thead");
+      const tbody = table.querySelector("tbody");
+      thead.innerHTML = "";
+      tbody.innerHTML = "";
+
+      if (!filtered.length) return;
+
+      const headers = Object.keys(filtered[0]);
+      const tr = document.createElement("tr");
+      headers.forEach(h => {
+        const th = document.createElement("th");
+        th.textContent = h;
+        tr.appendChild(th);
+      });
+      thead.appendChild(tr);
+
+      filtered.forEach(row => {
+        const tr = document.createElement("tr");
+        headers.forEach(h => {
+          const td = document.createElement("td");
+          td.textContent = h.toLowerCase().includes("tanggal") ? formatDate(row[h]) : row[h];
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderCharts() {
+      const byMonth = {};
+      const byStatus = {};
+      const byPIC = {};
+
+      filtered.forEach(row => {
+        const tgl = new Date(row.Tanggal);
+        if (!isNaN(tgl)) {
+          const key = `${tgl.getMonth()+1}/${tgl.getFullYear()}`;
+          byMonth[key] = (byMonth[key] || 0) + 1;
+        }
+
+        const status = row.Status || "-";
+        byStatus[status] = (byStatus[status] || 0) + 1;
+
+        const pic = row.PIC || "-";
+        byPIC[pic] = (byPIC[pic] || 0) + 1;
+      });
+
+      // Bersihkan canvas dulu supaya chart baru tidak menumpuk
+      if(window.perBulanChartInstance) window.perBulanChartInstance.destroy();
+      if(window.statusPieChartInstance) window.statusPieChartInstance.destroy();
+      if(window.picBarChartInstance) window.picBarChartInstance.destroy();
+
+      window.perBulanChartInstance = new Chart(document.getElementById("perBulanChart").getContext("2d"), {
+        type: "bar",
+        data: {
+          labels: Object.keys(byMonth),
+          datasets: [{ label: "Jumlah Data per Bulan", data: Object.values(byMonth), backgroundColor: "#4285F4" }]
+        },
+        options: { responsive: true }
+      });
+
+      window.statusPieChartInstance = new Chart(document.getElementById("statusPieChart").getContext("2d"), {
+        type: "pie",
+        data: {
+          labels: Object.keys(byStatus),
+          datasets: [{ label: "Distribusi Status", data: Object.values(byStatus), backgroundColor: ["#f44336", "#2196f3", "#4caf50", "#ff9800", "#9c27b0"] }]
+        },
+        options: { responsive: true }
+      });
+
+      window.picBarChartInstance = new Chart(document.getElementById("picBarChart").getContext("2d"), {
+        type: "bar",
+        data: {
+          labels: Object.keys(byPIC),
+          datasets: [{ label: "PIC Aktif", data: Object.values(byPIC), backgroundColor: "#9c27b0" }]
+        },
+        options: { responsive: true }
+      });
+    }
+
+    document.querySelectorAll(".filters input").forEach(i => i.addEventListener("input", render));
+    fetchData();
+  </script>
 </body>
 </html>
